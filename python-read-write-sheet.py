@@ -1,50 +1,25 @@
 # Install the smartsheet sdk with the command: pip install smartsheet-python-sdk
+import pandas
 import smartsheet
 import logging
 import os.path
 
 # TODO: Set your API access token here, or leave as None and set as environment variable "SMARTSHEET_ACCESS_TOKEN"
-access_token = None
+access_token = "9ffzzdb2pammh8gqpp8w5w6ucy"
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 
 # The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
-column_map = {}
+xl_column_map = {}
+ss_column_map = {}
+
+#Store Smartsheet of Interest in a variable
+SMARTSHEET_ID = 8950161956202372
 
 # Helper function to find cell in a row
-def get_cell_by_column_name(row, column_name):
-    column_id = column_map[column_name]
+def get_cell_by_column_name(map_obj, row, column_name):
+    column_id = map_obj[column_name]
     return row.get_column(column_id)
-
-
-# TODO: Replace the body of this function with your code
-# This *example* looks for rows with a "Status" column marked "Complete" and sets the "Remaining" column to zero
-#
-# Return a new Row with updated cell values, else None to leave unchanged
-def evaluate_row_and_build_updates(source_row):
-    # Find the cell and value we want to evaluate
-    status_cell = get_cell_by_column_name(source_row, "Status")
-    status_value = status_cell.display_value
-    if (status_value == "Complete"):
-        remaining_cell = get_cell_by_column_name(source_row, "Remaining")
-        if (remaining_cell.display_value != "0"):                           # Skip if already 0
-            print("Need to update row #" + str(source_row.row_number))
-
-            # Build new cell value
-            newCell = ss.models.Cell()
-            newCell.column_id = column_map["Remaining"]
-            newCell.value = 0
-
-            # Build the row to update
-            newRow = ss.models.Row()
-            newRow.id = source_row.id
-            newRow.cells.append(newCell)
-
-            return newRow
-
-    return None
-
-
 
 print("Starting ...")
 
@@ -56,35 +31,64 @@ ss.errors_as_exceptions(True)
 # Log all calls
 logging.basicConfig(filename='rwsheet.log', level=logging.INFO)
 
-# Import the sheet
-result = ss.Sheets.import_xlsx_sheet(_dir + '/Sample Sheet.xlsx', header_row_index=0)
+# # Import the excel sheet
+result = ss.Sheets.import_xlsx_sheet(_dir + '/Fake-Salesforce-Clients.xlsx', header_row_index=0)
+salesforce_data = ss.Sheets.get_sheet(result.data.id)
 
 # Load entire sheet
-sheet = ss.Sheets.get_sheet(result.data.id)
+sheet = ss.Sheets.get_sheet(SMARTSHEET_ID)
 
 print ("Loaded " + str(len(sheet.rows)) + " rows from sheet: " + sheet.name)
 
 # Build column map for later reference - translates column names to column id
-for column in sheet.columns:
-    column_map[column.title] = column.id
+for ss_column in sheet.columns:
+    ss_column_map[ss_column.title] = ss_column.id
 
+for xl_column in salesforce_data.columns:
+    xl_column_map[xl_column.title] = xl_column.id
+            
 # Accumulate rows needing update here
-rowsToUpdate = []
+AddedRowIDs = []
 
-for row in sheet.rows:
-    rowToUpdate = evaluate_row_and_build_updates(row)
-    if (rowToUpdate != None):
-        rowsToUpdate.append(rowToUpdate)
-
+for xl_row in salesforce_data.rows:
+    xl_status_cell = get_cell_by_column_name(xl_column_map, xl_row, "Status")
+    xl_status_value = xl_status_cell.display_value
+    
+    xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
+    xl_opp_ID_value = xl_opp_ID_cell.display_value
+    
+    #check if this oppID is already present in the Smartsheet
+    already_exists = False
+    for ss_row in sheet.rows:     
+        ss_opp_ID_cell = get_cell_by_column_name(ss_column_map, ss_row, "OppID")
+        ss_opp_ID_value = ss_opp_ID_cell.display_value
+        if (ss_opp_ID_value == xl_opp_ID_value):
+            already_exists = True
+            break
+            
+    if (xl_status_value == "Closed" and not already_exists):          
+            AddedRowIDs.append(xl_row.id) 
+    
+    
 # Finally, write updated cells back to Smartsheet
-if rowsToUpdate:
-    print("Writing " + str(len(rowsToUpdate)) + " rows back to sheet id " + str(sheet.id))
-    result = ss.Sheets.update_rows(result.data.id, rowsToUpdate)
+if AddedRowIDs:
+    print("Writing " + str(len(AddedRowIDs)) + " rows back to sheet id " + str(sheet.id))
+    response = ss.Sheets.copy_rows(
+      salesforce_data.id,               # sheet_id of rows to be copied
+      ss.models.CopyOrMoveRowDirective({
+        'row_ids': AddedRowIDs,
+        'to': ss.models.CopyOrMoveRowDestination({
+          'sheet_id': SMARTSHEET_ID
+        })
+      })
+    )
 else:
     print("No updates required")
         
+## Delete the Salesforce sheet that you've created:
+ss.Sheets.delete_sheet(
+  salesforce_data.id) 
 print ("Done")
-
 
 
 
