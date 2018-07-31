@@ -55,14 +55,16 @@ xl_column_map = create_map_from_columns(salesforce_data) #map for the salesforce
 ss_column_map = create_map_from_columns(client_sheet) #map for client list smartsheet
 pl_column_map = create_map_from_columns(pipeline_sheet) #map for pipeline list smartsheet
 
-# for ss_column in client_sheet.columns:
-#     ss_column_map[ss_column.title] = ss_column.id
+def check_if_opp_ID_exists_in_sheet(opp_id, smartsheet_obj, map_obj):
+    already_exists = False
+    for ss_row in smartsheet_obj.rows:     
+        ss_opp_ID_cell = get_cell_by_column_name(map_obj, ss_row, "OppID")
+        ss_opp_ID_value = ss_opp_ID_cell.display_value
+        if (ss_opp_ID_value == opp_id):
+            already_exists = True
+            break
+    return already_exists
 
-# for xl_column in salesforce_data.columns:
-#     xl_column_map[xl_column.title] = xl_column.id
-
-# for pipeline_column in pipeline_sheet.columns:
-#     pipeline_sheet[pipeline_column.title] = pipeline_column.id
 # Accumulate rows needing update here
 AddedRowIDs = []
 
@@ -73,16 +75,17 @@ for xl_row in salesforce_data.rows:
     xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
     xl_opp_ID_value = xl_opp_ID_cell.display_value
     
+    is_in_client_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map) 
     #check if this oppID is already present in the Client List Smartsheet
-    already_exists = False
-    for ss_row in client_sheet.rows:     
-        ss_opp_ID_cell = get_cell_by_column_name(ss_column_map, ss_row, "OppID")
-        ss_opp_ID_value = ss_opp_ID_cell.display_value
-        if (ss_opp_ID_value == xl_opp_ID_value):
-            already_exists = True
-            break
+#     already_exists = False
+#     for ss_row in client_sheet.rows:     
+#         ss_opp_ID_cell = get_cell_by_column_name(ss_column_map, ss_row, "OppID")
+#         ss_opp_ID_value = ss_opp_ID_cell.display_value
+#         if (ss_opp_ID_value == xl_opp_ID_value):
+#             already_exists = True
+#             break
             
-    if (xl_status_value == "Closed" and not already_exists):          
+    if (xl_status_value == "Closed" and not is_in_client_list):          
             AddedRowIDs.append(xl_row.id) 
     
     
