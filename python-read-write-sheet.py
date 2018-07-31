@@ -52,16 +52,19 @@ pl_column_map = create_map_from_columns(pipeline_sheet) #map for pipeline list s
 
 def check_if_opp_ID_exists_in_sheet(opp_id, smartsheet_obj, map_obj):
     already_exists = False
+    existing_row = None
     for ss_row in smartsheet_obj.rows:     
         ss_opp_ID_cell = get_cell_by_column_name(map_obj, ss_row, "OppID")
         ss_opp_ID_value = ss_opp_ID_cell.display_value
         if (ss_opp_ID_value == opp_id):
             already_exists = True
+            existing_row = ss_row
             break
-    return already_exists
+    return already_exists, existing_row
 
 # Accumulate rows needing update here
-AddToClientList = []
+AddDirectToClientList = []
+AddFromPipelineToClientList = []
 AddToPipelineList = []
 
 for xl_row in salesforce_data.rows:
@@ -71,8 +74,8 @@ for xl_row in salesforce_data.rows:
     xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
     xl_opp_ID_value = xl_opp_ID_cell.display_value
     
-    is_in_client_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map)     
-    is_in_pipeline_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, pipeline_sheet, pl_column_map)
+    is_in_client_list, client_row = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map)     
+    is_in_pipeline_list, pipeline_row = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, pipeline_sheet, pl_column_map)
     # IF IT IS A CLOSED OPPORTUNITY
     # Check if it is in the pipeline list
         # If Yes: Copy row from Pipeline List to Client List, delete from Pipeline List 
@@ -81,36 +84,32 @@ for xl_row in salesforce_data.rows:
         if (is_in_client_list):
             continue
         elif (not is_in_pipeline_list and not is_in_client_list):
-            AddToClientList.append(xl_row.id)
-#         elif (is_in_pipeline_list and not is_in_client_list):
-            #logic to delete from pipeline list and add that to client list
+            AddDirectToClientList.append(xl_row.id)
+        elif (is_in_pipeline_list and not is_in_client_list):
+            AddFromPipelineToClientList.append(pipeline_row.id)
     else:
         if (is_in_pipeline_list):
             continue
         else:
             AddToPipelineList.append(xl_row.id)
-    
-    #IF IT IS AN UN-CLOSED OPPORTUNITY
-    # Check if it is in the pipeline list
-        # If Yes:  Do nothing
-        # If No: Add to pipeline list
 
 
-def copy_to_smartsheet_list(source_sheet, target_sheet_ID, rows_to_copy):
-    print("Writing " + str(len(rows_to_copy)) + " rows back to sheet id " + str(target_sheet_ID))
-    response = ss.Sheets.copy_rows(
+
+def move_rows_to_smartsheet_list(source_sheet, target_sheet, rows_to_copy):
+    print("Writing " + str(len(rows_to_copy)) + " rows back from " + str(source_sheet.name) + " to " + str(target_sheet.name))
+    response = ss.Sheets.move_rows(
         source_sheet.id,               # sheet_id of rows to be copied
         ss.models.CopyOrMoveRowDirective({
             'row_ids': rows_to_copy,
             'to': ss.models.CopyOrMoveRowDestination({
-              'sheet_id': target_sheet_ID
+              'sheet_id': target_sheet.id
             })
           })
     )
     
 # Finally, write updated cells back to Smartsheet
-if AddToClientList:
-    copy_to_smartsheet_list(salesforce_data, CLIENT_LIST_ID, AddToClientList)
+if AddDirectToClientList:
+    move_rows_to_smartsheet_list(salesforce_data, client_sheet, AddDirectToClientList)
        
 #     email = ss.models.MultiRowEmail({
 #         #hard-coded, but this should pull in the value in the email column
@@ -123,7 +122,7 @@ if AddToClientList:
 #         "includeAttachments": False,
 #         "includeDiscussions": False
 #     })
-#     email.row_ids = AddToClientList
+#     email.row_ids = AddDirectToClientList
 
 #     # Send rows via email
 #     email_response = ss.Sheets.send_rows(
@@ -131,7 +130,9 @@ if AddToClientList:
 #       email)
 #     print(email_response)
 if AddToPipelineList:
-    copy_to_smartsheet_list(salesforce_data, PIPELINE_LIST_ID, AddToPipelineList)
+    move_rows_to_smartsheet_list(salesforce_data, pipeline_sheet, AddToPipelineList)
+if AddFromPipelineToClientList:
+    move_rows_to_smartsheet_list(pipeline_sheet, client_sheet, AddFromPipelineToClientList)
 else:
     print("No updates required")
         
