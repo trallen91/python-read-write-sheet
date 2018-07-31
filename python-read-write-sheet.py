@@ -13,7 +13,7 @@ _dir = os.path.dirname(os.path.abspath(__file__))
 xl_column_map = {}
 ss_column_map = {}
 
-#Store Smartsheet of Interest in a variable
+#Store Master List sheet ID of Interest in a variable
 SMARTSHEET_ID = 8950161956202372
 
 # Helper function to find cell in a row
@@ -82,6 +82,26 @@ if AddedRowIDs:
         })
       })
     )
+    
+    email = ss.models.MultiRowEmail({
+        #hard-coded, but this should pull in the value in the email column
+        "sendTo": [{
+            "email": "tallen@mdsol.com" 
+        }],
+        "subject": "Action Required: Payments Data Needed",
+        "message": "Hi Travis. New opportunities have appeared in the Payments List.  Please update the missing fields.  Payments Team",
+        "ccMe": False,
+        "includeAttachments": False,
+        "includeDiscussions": False
+    })
+    email.row_ids = AddedRowIDs
+
+    # Send rows via email
+    email_response = ss.Sheets.send_rows(
+      salesforce_data.id,       # sheet_id
+      email)
+    print(email_response)
+
 else:
     print("No updates required")
         
