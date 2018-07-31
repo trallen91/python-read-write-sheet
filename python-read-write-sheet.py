@@ -9,11 +9,6 @@ access_token = "9ffzzdb2pammh8gqpp8w5w6ucy"
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 
-# # The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
-# xl_column_map = {} #map for the salesforce excel sheet
-# ss_column_map = {} #map for client list smartsheet
-# pl_column_map = {} #map for pipeline list smartsheet
-
 #Store Master Client List and Pipeline sheet ID of Interest in a variable
 CLIENT_LIST_ID = 8950161956202372
 PIPELINE_LIST_ID = 8257272599078788
@@ -66,7 +61,8 @@ def check_if_opp_ID_exists_in_sheet(opp_id, smartsheet_obj, map_obj):
     return already_exists
 
 # Accumulate rows needing update here
-AddedRowIDs = []
+AddToClientList = []
+AddToPipelineList = []
 
 for xl_row in salesforce_data.rows:
     xl_status_cell = get_cell_by_column_name(xl_column_map, xl_row, "Status")
@@ -75,52 +71,67 @@ for xl_row in salesforce_data.rows:
     xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
     xl_opp_ID_value = xl_opp_ID_cell.display_value
     
-    is_in_client_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map) 
-    #check if this oppID is already present in the Client List Smartsheet
-#     already_exists = False
-#     for ss_row in client_sheet.rows:     
-#         ss_opp_ID_cell = get_cell_by_column_name(ss_column_map, ss_row, "OppID")
-#         ss_opp_ID_value = ss_opp_ID_cell.display_value
-#         if (ss_opp_ID_value == xl_opp_ID_value):
-#             already_exists = True
-#             break
-            
-    if (xl_status_value == "Closed" and not is_in_client_list):          
-            AddedRowIDs.append(xl_row.id) 
+    is_in_client_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map)     
+    is_in_pipeline_list = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, pipeline_sheet, pl_column_map)
+    # IF IT IS A CLOSED OPPORTUNITY
+    # Check if it is in the pipeline list
+        # If Yes: Copy row from Pipeline List to Client List, delete from Pipeline List 
+        # If No: Check if it is in Client List, then add if not 
+    if (xl_status_value == "Closed"):          
+        if (is_in_client_list):
+            continue
+        elif (not is_in_pipeline_list and not is_in_client_list):
+            AddToClientList.append(xl_row.id)
+#         elif (is_in_pipeline_list and not is_in_client_list):
+            #logic to delete from pipeline list and add that to client list
+    else:
+        if (is_in_pipeline_list):
+            continue
+        else:
+            AddToPipelineList.append(xl_row.id)
     
-    
-# Finally, write updated cells back to Smartsheet
-if AddedRowIDs:
-    print("Writing " + str(len(AddedRowIDs)) + " rows back to sheet id " + str(client_sheet.id))
+    #IF IT IS AN UN-CLOSED OPPORTUNITY
+    # Check if it is in the pipeline list
+        # If Yes:  Do nothing
+        # If No: Add to pipeline list
+
+
+def copy_to_smartsheet_list(source_sheet, target_sheet_ID, rows_to_copy):
+    print("Writing " + str(len(rows_to_copy)) + " rows back to sheet id " + str(target_sheet_ID))
     response = ss.Sheets.copy_rows(
-      salesforce_data.id,               # sheet_id of rows to be copied
-      ss.models.CopyOrMoveRowDirective({
-        'row_ids': AddedRowIDs,
-        'to': ss.models.CopyOrMoveRowDestination({
-          'sheet_id': CLIENT_LIST_ID
-        })
-      })
+        source_sheet.id,               # sheet_id of rows to be copied
+        ss.models.CopyOrMoveRowDirective({
+            'row_ids': rows_to_copy,
+            'to': ss.models.CopyOrMoveRowDestination({
+              'sheet_id': target_sheet_ID
+            })
+          })
     )
     
-    email = ss.models.MultiRowEmail({
-        #hard-coded, but this should pull in the value in the email column
-        "sendTo": [{
-            "email": "tallen@mdsol.com" 
-        }],
-        "subject": "Action Required: Payments Data Needed",
-        "message": "Hi Travis. New opportunities have appeared in the Payments List.  Please update the missing fields.  Payments Team",
-        "ccMe": False,
-        "includeAttachments": False,
-        "includeDiscussions": False
-    })
-    email.row_ids = AddedRowIDs
+# Finally, write updated cells back to Smartsheet
+if AddToClientList:
+    copy_to_smartsheet_list(salesforce_data, CLIENT_LIST_ID, AddToClientList)
+       
+#     email = ss.models.MultiRowEmail({
+#         #hard-coded, but this should pull in the value in the email column
+#         "sendTo": [{
+#             "email": "tallen@mdsol.com" 
+#         }],
+#         "subject": "Action Required: Payments Data Needed",
+#         "message": "Hi Travis. New opportunities have appeared in the Payments List.  Please update the missing fields.  Payments Team",
+#         "ccMe": False,
+#         "includeAttachments": False,
+#         "includeDiscussions": False
+#     })
+#     email.row_ids = AddToClientList
 
-    # Send rows via email
-    email_response = ss.Sheets.send_rows(
-      salesforce_data.id,       # sheet_id
-      email)
-    print(email_response)
-
+#     # Send rows via email
+#     email_response = ss.Sheets.send_rows(
+#       salesforce_data.id,       # sheet_id
+#       email)
+#     print(email_response)
+if AddToPipelineList:
+    copy_to_smartsheet_list(salesforce_data, PIPELINE_LIST_ID, AddToPipelineList)
 else:
     print("No updates required")
         
