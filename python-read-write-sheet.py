@@ -9,17 +9,25 @@ access_token = "9ffzzdb2pammh8gqpp8w5w6ucy"
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 
-# The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
-xl_column_map = {}
-ss_column_map = {}
+# # The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
+# xl_column_map = {} #map for the salesforce excel sheet
+# ss_column_map = {} #map for client list smartsheet
+# pl_column_map = {} #map for pipeline list smartsheet
 
-#Store Master List sheet ID of Interest in a variable
-SMARTSHEET_ID = 8950161956202372
+#Store Master Client List and Pipeline sheet ID of Interest in a variable
+CLIENT_LIST_ID = 8950161956202372
+PIPELINE_LIST_ID = 8257272599078788
 
 # Helper function to find cell in a row
 def get_cell_by_column_name(map_obj, row, column_name):
     column_id = map_obj[column_name]
     return row.get_column(column_id)
+
+def create_map_from_columns(smartsheet_obj):
+    map_obj = {}
+    for column in smartsheet_obj.columns:
+        map_obj[column.title] = column.id
+    return map_obj
 
 print("Starting ...")
 
@@ -31,22 +39,30 @@ ss.errors_as_exceptions(True)
 # Log all calls
 logging.basicConfig(filename='rwsheet.log', level=logging.INFO)
 
-# # Import the excel sheet
+# # Import the excel sheet into a smartsheet object (this creates a smartsheet to be deleted later)
 result = ss.Sheets.import_xlsx_sheet(_dir + '/Fake-Salesforce-Clients.xlsx', header_row_index=0)
 salesforce_data = ss.Sheets.get_sheet(result.data.id)
 
-# Load entire sheet
-sheet = ss.Sheets.get_sheet(SMARTSHEET_ID)
+# Load entire client sheet and pipeline sheet
+client_sheet = ss.Sheets.get_sheet(CLIENT_LIST_ID)
+pipeline_sheet = ss.Sheets.get_sheet(PIPELINE_LIST_ID)
 
-print ("Loaded " + str(len(sheet.rows)) + " rows from sheet: " + sheet.name)
+print ("Loaded " + str(len(client_sheet.rows)) + " rows from sheet: " + client_sheet.name)
 
+# The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
 # Build column map for later reference - translates column names to column id
-for ss_column in sheet.columns:
-    ss_column_map[ss_column.title] = ss_column.id
+xl_column_map = create_map_from_columns(salesforce_data) #map for the salesforce excel sheet
+ss_column_map = create_map_from_columns(client_sheet) #map for client list smartsheet
+pl_column_map = create_map_from_columns(pipeline_sheet) #map for pipeline list smartsheet
 
-for xl_column in salesforce_data.columns:
-    xl_column_map[xl_column.title] = xl_column.id
-            
+# for ss_column in client_sheet.columns:
+#     ss_column_map[ss_column.title] = ss_column.id
+
+# for xl_column in salesforce_data.columns:
+#     xl_column_map[xl_column.title] = xl_column.id
+
+# for pipeline_column in pipeline_sheet.columns:
+#     pipeline_sheet[pipeline_column.title] = pipeline_column.id
 # Accumulate rows needing update here
 AddedRowIDs = []
 
@@ -57,9 +73,9 @@ for xl_row in salesforce_data.rows:
     xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
     xl_opp_ID_value = xl_opp_ID_cell.display_value
     
-    #check if this oppID is already present in the Smartsheet
+    #check if this oppID is already present in the Client List Smartsheet
     already_exists = False
-    for ss_row in sheet.rows:     
+    for ss_row in client_sheet.rows:     
         ss_opp_ID_cell = get_cell_by_column_name(ss_column_map, ss_row, "OppID")
         ss_opp_ID_value = ss_opp_ID_cell.display_value
         if (ss_opp_ID_value == xl_opp_ID_value):
@@ -72,13 +88,13 @@ for xl_row in salesforce_data.rows:
     
 # Finally, write updated cells back to Smartsheet
 if AddedRowIDs:
-    print("Writing " + str(len(AddedRowIDs)) + " rows back to sheet id " + str(sheet.id))
+    print("Writing " + str(len(AddedRowIDs)) + " rows back to sheet id " + str(client_sheet.id))
     response = ss.Sheets.copy_rows(
       salesforce_data.id,               # sheet_id of rows to be copied
       ss.models.CopyOrMoveRowDirective({
         'row_ids': AddedRowIDs,
         'to': ss.models.CopyOrMoveRowDestination({
-          'sheet_id': SMARTSHEET_ID
+          'sheet_id': CLIENT_LIST_ID
         })
       })
     )
