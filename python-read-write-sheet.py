@@ -5,8 +5,7 @@ import logging
 import os.path
 import json
 
-# TODO: Set your API access token here, or leave as None and set as environment variable "SMARTSHEET_ACCESS_TOKEN"
-access_token = "9ffzzdb2pammh8gqpp8w5w6ucy"
+
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -133,7 +132,7 @@ def send_email_with_new_rows(move_response):
     })
     email.row_ids = destination_row_ids
     
-    # LOGIC TO ONLY SEND RELEVANT COLUMNS 
+    # LOGIC TO ONLY SEND RELEVANT COLUMNS SHOULD GO HERE
     email_response = ss.Sheets.send_rows(
       destination_sheet_id,       # sheet_id
       email)
@@ -143,32 +142,6 @@ def send_email_with_new_rows(move_response):
 if AddDirectToClientList:
     cl_move_response = move_rows_to_smartsheet_list(salesforce_data, client_sheet, AddDirectToClientList)
     send_email_with_new_rows(cl_move_response)
-#     move_object = json.loads(json_response) 
-        
-#     move_object = move_response.to_dict()
-#     destination_sheet_id = move_object['destinationSheetId']
-#     row_mappings = move_object['rowMappings']
-    
-#     destination_row_ids = []
-#     for row_map in row_mappings:
-#         destination_row_ids.append(row_map['to'])
-        
-#     email = ss.models.MultiRowEmail({
-#         #hard-coded, but this should pull in the value in the email column
-#         "sendTo": [{
-#             "email": "tallen@mdsol.com" 
-#         }],
-#         "subject": "Action Required: Payments Data Needed",
-#         "message": "Hi Travis. New opportunities have appeared in the Payments List.  Please update the missing fields.  Payments Team",
-#         "ccMe": False,
-#         "includeAttachments": False,
-#         "includeDiscussions": False
-#     })
-#     email.row_ids = destination_row_ids
-    
-#     email_response = ss.Sheets.send_rows(
-#       destination_sheet_id,       # sheet_id
-#       email)
 
 if AddToPipelineList:
     pl_move_response = move_rows_to_smartsheet_list(salesforce_data, pipeline_sheet, AddToPipelineList)
