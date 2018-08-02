@@ -5,7 +5,8 @@ import logging
 import os.path
 import json
 
-
+# TODO: Set your API access token here, or leave as None and set as environment variable "SMARTSHEET_ACCESS_TOKEN"
+access_token = "y65rugwjfgncy3h9an5vjtn9fv"
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 
