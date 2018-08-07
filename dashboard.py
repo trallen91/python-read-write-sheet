@@ -83,20 +83,17 @@ for month_column in stats_sheet.columns:
         continue
     monthly_payments = 0
     column_date = datetime.strptime(month_column.title, '%b %Y')
-    print(type(column_date))
     
     for client_study_row in client_sheet.rows:
         num_sites = get_cell_value_by_column_name(clients_column_map, client_study_row, "# of Sites")
         start_date = get_cell_value_by_column_name(clients_column_map, client_study_row, "Start Date")
-        print(start_date)
-        ## THIS START DATE CONVERSION IS BROKEN, MAKING EVERYTHING 01-01-18
         start_date = datetime.strptime(start_date, '%Y-%m-%d')
+        is_using_disbursements = get_cell_value_by_column_name(clients_column_map, client_study_row, "Disbursements") 
         payment_frequency = get_cell_value_by_column_name(clients_column_map, client_study_row, "Payment Frequency")
         payments_per_month = 1 if payment_frequency == "Monthly" else 2
         month_study_payments = num_sites * payments_per_month
         
-        if (start_date < column_date):
-            print(start_date)
+        if (start_date <= column_date and is_using_disbursements == "Yes"):
             monthly_payments += month_study_payments
     print("Total for Month....")
     print(monthly_payments)
@@ -110,7 +107,12 @@ for month_column in stats_sheet.columns:
 updated_row = ss.Sheets.update_rows(
   STATS_SHEET_ID,      # sheet_id
   [new_clients_row])
-    
+
+new_pipeline_row = ss.models.Row()
+new_pipeline_row.id = pipeline_row.id
+
+
+
 # sight = ss.Sights.get_sight(
 #   DASHBOARD_ID)     # sightId
 

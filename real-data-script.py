@@ -4,6 +4,7 @@ import smartsheet
 import logging
 import os.path
 import json
+import time
 
 # TODO: Set your API access token here, or leave as None and set as environment variable "SMARTSHEET_ACCESS_TOKEN"
 access_token = "y65rugwjfgncy3h9an5vjtn9fv"
@@ -11,8 +12,8 @@ access_token = "y65rugwjfgncy3h9an5vjtn9fv"
 _dir = os.path.dirname(os.path.abspath(__file__))
 
 #Store Master Client List and Pipeline sheet ID of Interest in a variable
-CLIENT_LIST_ID = 8950161956202372
-PIPELINE_LIST_ID = 8257272599078788
+CLIENT_LIST_ID = 8096191998125956
+PIPELINE_LIST_ID = 6699502993205124
 
 # Helper function to find cell in a row
 def get_cell_by_column_name(map_obj, row, column_name):
@@ -25,8 +26,6 @@ def create_map_from_columns(smartsheet_obj):
         map_obj[column.title] = column.id
     return map_obj
 
-print("Starting ...")
-
 # Initialize client
 ss = smartsheet.Smartsheet(access_token)
 # Make sure we don't miss any error
@@ -36,14 +35,47 @@ ss.errors_as_exceptions(True)
 logging.basicConfig(filename='rwsheet.log', level=logging.INFO)
 
 # # Import the excel sheet into a smartsheet object (this creates a smartsheet to be deleted later)
-result = ss.Sheets.import_xlsx_sheet(_dir + '/Fake-Salesforce-Clients.xlsx', header_row_index=0)
-salesforce_data = ss.Sheets.get_sheet(result.data.id)
+sf_result = ss.Sheets.import_xlsx_sheet(_dir + '/Payment_Pipeline_crosstab.xlsx', header_row_index=0)
+salesforce_data = ss.Sheets.get_sheet(sf_result.data.id)
+
+# CHANGE THE COLUMNS NAMES IN THE SALESFORCE/TABLEAU REPORT
+for sf_col in salesforce_data.columns:
+    if (sf_col.title == "Opportunity Number"):
+        column_spec = ss.models.Column({
+          'title': 'OppID',
+        })
+        col_response = ss.Sheets.update_column(
+          salesforce_data.id,       # sheet_id
+          sf_col.id,       # column_id
+          column_spec)
+    if (sf_col.title == "Sponsor Name"):
+        column_spec = ss.models.Column({
+          'title': 'Client',
+        })
+        col_response = ss.Sheets.update_column(
+          salesforce_data.id,       # sheet_id
+          sf_col.id,       # column_id
+          column_spec)
+    if (sf_col.title == "SSS"):
+        column_spec = ss.models.Column({
+          'title': 'SS',
+        })
+        col_response = ss.Sheets.update_column(
+          salesforce_data.id,       # sheet_id
+          sf_col.id,       # column_id
+          column_spec)
+    if (sf_col.title == "Primary Rep-Product Family"):
+        ss.Sheets.delete_column(
+          salesforce_data.id,       # sheet_id
+          sf_col.id)       # column_id
+salesforce_data = ss.Sheets.get_sheet(salesforce_data.id)
+    
 
 # Load entire client sheet and pipeline sheet
 client_sheet = ss.Sheets.get_sheet(CLIENT_LIST_ID)
 pipeline_sheet = ss.Sheets.get_sheet(PIPELINE_LIST_ID)
 
-print ("Loaded " + str(len(client_sheet.rows)) + " rows from sheet: " + client_sheet.name)
+# print ("Loaded " + str(len(client_sheet.rows)) + " rows from sheet: " + client_sheet.name)
 
 # The API identifies columns by Id, but it's more convenient to refer to column names. Store a map here
 # Build column map for later reference - translates column names to column id
@@ -69,7 +101,7 @@ AddFromPipelineToClientList = []
 AddToPipelineList = []
 
 for xl_row in salesforce_data.rows:
-    xl_status_cell = get_cell_by_column_name(xl_column_map, xl_row, "Status")
+    xl_status_cell = get_cell_by_column_name(xl_column_map, xl_row, "Stage-Probability %")
     xl_status_value = xl_status_cell.display_value
     
     xl_opp_ID_cell = get_cell_by_column_name(xl_column_map, xl_row, "OppID")
@@ -77,11 +109,8 @@ for xl_row in salesforce_data.rows:
     
     is_in_client_list, client_row = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, client_sheet, ss_column_map)     
     is_in_pipeline_list, pipeline_row = check_if_opp_ID_exists_in_sheet(xl_opp_ID_value, pipeline_sheet, pl_column_map)
-    # IF IT IS A CLOSED OPPORTUNITY
-    # Check if it is in the pipeline list
-        # If Yes: Copy row from Pipeline List to Client List, delete from Pipeline List 
-        # If No: Check if it is in Client List, then add if not 
-    if (xl_status_value == "Closed"):          
+
+    if (xl_status_value == "Closed Won-100%"):          
         if (is_in_client_list):
             continue
         elif (not is_in_pipeline_list and not is_in_client_list):
@@ -97,7 +126,6 @@ for xl_row in salesforce_data.rows:
 
 
 def move_rows_to_smartsheet_list(source_sheet, target_sheet, rows_to_copy):
-    print("Writing " + str(len(rows_to_copy)) + " rows back from " + str(source_sheet.name) + " to " + str(target_sheet.name))
     response = ss.Sheets.move_rows(
         source_sheet.id,               # sheet_id of rows to be copied
         ss.models.CopyOrMoveRowDirective({
@@ -119,14 +147,14 @@ def send_email_with_new_rows(move_response):
     destination_row_ids = []
     for row_map in row_mappings:
         destination_row_ids.append(row_map['to'])
-        
+    
     email = ss.models.MultiRowEmail({
         #hard-coded, but this should pull in the value in the email column
         "sendTo": [{
             "email": "tallen@mdsol.com" 
         }],
         "subject": "Action Required: Payments Data Needed",
-        "message": "Hi [SOLUTION SPECIALIST NAME]. New opportunities under your name have appeared in the Payments List.  Please update the missing fields so that we can begin the appropriate implementation steps.  Thank you!",
+        "message": "Hi Travis. New opportunities have appeared in the Payments List.  Please update the missing fields.  Payments Team",
         "ccMe": False,
         "includeAttachments": False,
         "includeDiscussions": False
@@ -146,18 +174,15 @@ if AddDirectToClientList:
 
 if AddToPipelineList:
     pl_move_response = move_rows_to_smartsheet_list(salesforce_data, pipeline_sheet, AddToPipelineList)
-    send_email_with_new_rows(pl_move_response)
+#     send_email_with_new_rows(pl_move_response)
     
 if AddFromPipelineToClientList:
     pl_to_cl_move_response = move_rows_to_smartsheet_list(pipeline_sheet, client_sheet, AddFromPipelineToClientList)
     send_email_with_new_rows(pl_to_cl_move_response)
-else:
-    print("No updates required")
+
         
 ## Delete the Salesforce sheet that you've created:
 ss.Sheets.delete_sheet(
   salesforce_data.id) 
-print ("Done")
 
-
-
+print("Task Done!")
